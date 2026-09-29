@@ -1,6 +1,6 @@
 id: 3733fa47-988e-4385-b808-dc4e62f4ae6a
 name: "@mgreten/jev-agent-ask"
-description: Prepare scoped state, ask Jev at the vault-resolving workflow boundary, and return answer-only results.
+description: Prepare scoped state, ask Jev once for combined questions or concurrently across files, and return answer-only results.
 tags: {}
 inputs:
   properties:
@@ -45,19 +45,28 @@ jobs:
       - job: prepare
         condition: { type: succeeded }
     steps:
-      - name: ask-${{ self.request.name }}
-        forEach:
-          item: request
-          in: ${{ data.query('modelName == "' + inputs.agentModel + '" && specName == "prepared" && workflowRunId == "' + run.id + '"')[0].attributes.requests }}
-        concurrency: 1
+      - name: ask-combined
+        guard: ${{ inputs.mode != "combined" }}
         task:
           type: model_method
           modelIdOrName: ${{ inputs.jevModel }}
           methodName: ask
           inputs:
-            name: ${{ self.request.name }}
-            state: ${{ self.request.state }}
-            questions: ${{ self.request.questions }}
+            name: ${{ data.query('modelName == "' + inputs.agentModel + '" && specName == "prepared" && workflowRunId == "' + run.id + '"')[0].attributes.requests[0].name }}
+            state: ${{ data.query('modelName == "' + inputs.agentModel + '" && specName == "prepared" && workflowRunId == "' + run.id + '"')[0].attributes.requests[0].state }}
+            questions: ${{ data.query('modelName == "' + inputs.agentModel + '" && specName == "prepared" && workflowRunId == "' + run.id + '"')[0].attributes.requests[0].questions }}
+      - name: ask-files
+        guard: ${{ inputs.mode != "per-file" }}
+        task:
+          type: model_method
+          modelIdOrName: ${{ inputs.jevModel }}
+          methodName: triage_batch
+          inputs:
+            name: ${{ data.query('modelName == "' + inputs.agentModel + '" && specName == "prepared" && workflowRunId == "' + run.id + '"')[0].attributes.batchName }}
+            items: >-
+              ${{ data.query('modelName == "' + inputs.agentModel + '" && specName == "prepared" && workflowRunId == "' + run.id + '"')[0].attributes.requests.map(r, {"id": r.name, "state": r.state}) }}
+            questions: ${{ data.query('modelName == "' + inputs.agentModel + '" && specName == "prepared" && workflowRunId == "' + run.id + '"')[0].attributes.requests[0].questions }}
+            concurrency: 4
   - name: collect
     dependsOn:
       - job: evaluate

@@ -1,7 +1,14 @@
 manifestVersion: 1
 name: "@mgreten/jev-agent-tools"
 version: "2026.09.29.1"
-description: "Scoped repository file discovery and typed Jev question tools"
+description: >-
+  Agent-facing, scoped Jev questions over supplied context or repository files.
+  Inspired by IndyDevDan's "10 Levels of Jev For Agentic Engineers" cheap-read
+  and files-at-scale demos: agents get typed Noul, Choice, and Score judgments
+  without loading every candidate file into their conversation. One request
+  answers many questions over shared state; bounded concurrent requests judge
+  independent files through @swamp/typesafe-ai and @webframp/typesafe-batch.
+  See the bundled README for live matgreten.dev examples and end-to-end timings.
 repository: "https://github.com/meagerfindings/swamp-jev-agent-tools"
 paths:
   base: manifest
@@ -14,3 +21,4 @@ additionalFiles:
   - LICENSE.txt
 dependencies:
   - "@swamp/typesafe-ai"
+  - "@webframp/typesafe-batch"

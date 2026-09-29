@@ -71,6 +71,7 @@ const RequestSchema = z.object({
 const PreparedSchema = z.object({
   mode: z.enum(["combined", "per-file"]),
   requests: z.array(RequestSchema).min(1),
+  batchName: z.string().optional(),
   files: z.array(z.string()),
   skipped: z.array(z.object({ path: z.string(), reason: z.string() })),
   truncated: z.boolean(),
@@ -102,6 +103,17 @@ const EvaluationSchema = z.object({
   usage: UsageSchema,
   evaluatedAt: z.string(),
 });
+const BatchSchema = z.object({
+  results: z.array(z.object({
+    id: z.string(),
+    answers: z.record(z.string(), AnswerSchema),
+  })),
+  failures: z.array(z.object({ id: z.string(), reason: z.string() })),
+  model: z.string(),
+  totalInputTokens: z.number().int().nonnegative(),
+  totalOutputTokens: z.number().int().nonnegative(),
+  evaluatedAt: z.string(),
+});
 const SkippedSchema = z.object({ path: z.string(), reason: z.string() });
 const ResultSchema = z.object({
   files: z.array(z.string()),
@@ -116,7 +128,7 @@ const ResultSchema = z.object({
     path: z.string(),
     answers: z.record(z.string(), AnswerSchema),
     model: z.string(),
-    usage: UsageSchema,
+    usage: UsageSchema.optional(),
     evaluatedAt: z.string(),
   })).optional(),
   skipped: z.array(SkippedSchema),
@@ -500,7 +512,7 @@ export const model = {
   methods: {
     prepare: {
       description:
-        "Stage scoped repository text and typed questions for top-level Jev workflow steps; the prepared resource contains raw source.",
+        "Stage scoped repository text and typed questions; combined mode makes one Jev request, per-file mode batches independent states with bounded concurrency. The prepared resource contains raw source.",
       arguments: PrepareArgsSchema,
       execute: async (
         args: z.infer<typeof PrepareArgsSchema>,
@@ -533,6 +545,7 @@ export const model = {
         const prepared = PreparedSchema.parse({
           mode: args.mode,
           requests,
+          ...(args.mode === "per-file" ? { batchName: `batch-${nonce}` } : {}),
           files: selected.files.map(({ path }) => path),
           skipped: selected.skipped,
           truncated: selected.truncated,
@@ -550,7 +563,7 @@ export const model = {
     },
     collect: {
       description:
-        "Correlate top-level Jev evaluations with a staged request and store answer-only results.",
+        "Correlate Jev answers with staged requests, reject missing or failed items, and store answer-only results.",
       arguments: CollectArgsSchema,
       execute: async (
         args: z.infer<typeof CollectArgsSchema>,
@@ -570,31 +583,65 @@ export const model = {
           preparations?.find((record) => record.name === args.preparationName)
             ?.attributes,
         );
+        if (staged.mode === "per-file") {
+          const records = await context.readModelData(
+            context.globalArgs.jevModel,
+            "triageBatch",
+          );
+          const record = records?.find((item) =>
+            item.name === `triage-batch-${staged.batchName}`
+          );
+          const batch = BatchSchema.parse(record?.attributes);
+          const expected = new Set(staged.requests.map(({ name }) => name));
+          if (
+            batch.failures.length || batch.results.length !== expected.size ||
+            batch.results.some(({ id }) => !expected.delete(id)) ||
+            expected.size
+          ) {
+            throw new Error(
+              "Jev batch has missing, failed, or duplicate file evaluations",
+            );
+          }
+          const evaluations = staged.requests.map((request) => {
+            const item = batch.results.find(({ id }) => id === request.name)!;
+            return {
+              path: request.path!,
+              answers: validateAnswers(item.answers, request.questions),
+              model: batch.model,
+              evaluatedAt: batch.evaluatedAt,
+            };
+          });
+          context.logger.info("Collected {count} Jev evaluation(s)", {
+            count: evaluations.length,
+          });
+          return await writeResult(context, {
+            files: staged.files,
+            truncated: staged.truncated,
+            evaluations,
+            usage: {
+              input_tokens: batch.totalInputTokens,
+              output_tokens: batch.totalOutputTokens,
+            },
+            skipped: staged.skipped,
+          });
+        }
         const records = await context.readModelData(
           context.globalArgs.jevModel,
           "evaluation",
         );
-        const evaluations = staged.requests.map((request) => ({
-          path: request.path,
-          ...parseEvaluation(
-            records?.find((record) =>
-              record.name === `evaluation-${request.name}`
-            ),
-            request.questions,
+        const evaluation = parseEvaluation(
+          records?.find((record) =>
+            record.name === `evaluation-${staged.requests[0].name}`
           ),
-        }));
+          staged.requests[0].questions,
+        );
         context.logger.info("Collected {count} Jev evaluation(s)", {
-          count: evaluations.length,
+          count: 1,
         });
         return await writeResult(context, {
           files: staged.files,
           truncated: staged.truncated,
-          ...(staged.mode === "combined" ? evaluations[0] : {
-            evaluations: evaluations.map(({ path, ...evaluation }) => ({
-              path: path!,
-              ...evaluation,
-            })),
-          }),
+          ...evaluation,
           skipped: staged.skipped,
         });
       },

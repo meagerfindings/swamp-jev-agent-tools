@@ -36,6 +36,7 @@ function mockContext(root: string) {
     { spec: string; name: string; data: Record<string, unknown> }
   > = [];
   const evaluations: Array<{ name: string; attributes: unknown }> = [];
+  const batches: Array<{ name: string; attributes: unknown }> = [];
   const context = {
     globalArgs: { jevModel: "jev", repositoryRoot: root },
     logger: { info: (_message: string) => {} },
@@ -54,11 +55,12 @@ function mockContext(root: string) {
             .map(({ name, data }) => ({ name, attributes: data })),
         );
       }
-      assertEquals([definition, spec], ["jev", "evaluation"]);
-      return Promise.resolve(evaluations);
+      assertEquals(definition, "jev");
+      assert(["evaluation", "triageBatch"].includes(spec));
+      return Promise.resolve(spec === "evaluation" ? evaluations : batches);
     },
   };
-  return { context, written, evaluations };
+  return { context, written, evaluations, batches };
 }
 
 async function withRepo(
@@ -108,7 +110,7 @@ Deno.test("per-file mode correlates independent Jev answers and keeps raw source
   await withRepo(async (root) => {
     await Deno.writeTextFile(`${root}/alpha.txt`, "alpha unique content");
     await Deno.writeTextFile(`${root}/beta.txt`, "beta unique content");
-    const { context, written, evaluations } = mockContext(root);
+    const { context, written, batches } = mockContext(root);
     await model.methods.prepare.execute({
       mode: "per-file",
       state: "review",
@@ -125,18 +127,23 @@ Deno.test("per-file mode correlates independent Jev answers and keeps raw source
       (requests[1].state as { file: { text: string } }).file.text,
       "beta unique content",
     );
-    for (const request of requests) {
-      evaluations.push({
-        name: `evaluation-${request.name}`,
-        attributes: {
-          answers,
-          model: "jev-model",
-          usage: { input_tokens: 13, output_tokens: 4 },
-          evaluatedAt: "2026-09-29T00:00:00Z",
-          state: request.state,
-        },
-      });
-    }
+    batches.push({
+      name: `triage-batch-${staged.data.batchName}`,
+      attributes: {
+        results: [
+          {
+            id: requests[1].name,
+            answers: { ...answers, actionable: { type: "noul", noul: 0.02 } },
+          },
+          { id: requests[0].name, answers },
+        ],
+        failures: [],
+        model: "jev-model",
+        totalInputTokens: 31,
+        totalOutputTokens: 8,
+        evaluatedAt: "2026-09-29T00:00:00Z",
+      },
+    });
     await model.methods.collect.execute({
       preparationName: staged.name,
       sourceModel: "repo-review",
@@ -151,7 +158,57 @@ Deno.test("per-file mode correlates independent Jev answers and keeps raw source
         .urgency.score,
       1.7,
     );
+    assertEquals(
+      (result.evaluations as Array<{ answers: typeof answers }>)[1].answers
+        .actionable.noul,
+      0.02,
+    );
+    assertEquals(result.usage, { input_tokens: 31, output_tokens: 8 });
+    assertEquals(
+      (result.evaluations as Array<{ usage?: unknown }>)[0].usage,
+      undefined,
+    );
     assert(!JSON.stringify(result).includes("unique content"));
+  });
+});
+
+Deno.test("per-file collect rejects partial batch failure and duplicate IDs", async () => {
+  await withRepo(async (root) => {
+    await Deno.writeTextFile(`${root}/a.txt`, "one");
+    await Deno.writeTextFile(`${root}/b.txt`, "two");
+    const { context, written, batches } = mockContext(root);
+    await model.methods.prepare.execute({
+      mode: "per-file",
+      state: "",
+      questions,
+      globs: ["*.txt"],
+    }, context);
+    const staged = written[0];
+    const ids = (staged.data.requests as Array<{ name: string }>).map((
+      { name },
+    ) => name);
+    const batch = {
+      results: [{ id: ids[0], answers }],
+      failures: [{ id: ids[1], reason: "evaluation unavailable" }],
+      model: "jev-model",
+      totalInputTokens: 13,
+      totalOutputTokens: 4,
+      evaluatedAt: "2026-09-29T00:00:00Z",
+    };
+    batches.push({
+      name: `triage-batch-${staged.data.batchName}`,
+      attributes: batch,
+    });
+    const collect = () =>
+      model.methods.collect.execute({
+        preparationName: staged.name,
+        sourceModel: "repo-review",
+      }, context);
+    await assertRejects(collect, Error, "missing, failed, or duplicate");
+    batch.failures = [];
+    batch.results.push({ id: ids[0], answers });
+    await assertRejects(collect, Error, "missing, failed, or duplicate");
+    assertEquals(written.length, 1);
   });
 });
 
