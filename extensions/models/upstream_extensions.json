@@ -1,0 +1,17 @@
+{
+  "@swamp/typesafe-ai": {
+    "version": "2026.09.15.1",
+    "pulledAt": "2026-09-29T03:18:39.168Z",
+    "files": [
+      ".swamp/bundles/beb8a56c/typesafe_ai.js",
+      ".swamp/pulled-extensions/@swamp/typesafe-ai/files/LICENSE.txt",
+      ".swamp/pulled-extensions/@swamp/typesafe-ai/files/README.md",
+      ".swamp/pulled-extensions/@swamp/typesafe-ai/manifest.yaml",
+      ".swamp/pulled-extensions/@swamp/typesafe-ai/models/_lib/client.ts",
+      ".swamp/pulled-extensions/@swamp/typesafe-ai/models/typesafe_ai.ts"
+    ],
+    "checksum": "a41f37b03a0f236182c4333e723248bfb464e65433d3eaa0a75be748d1855f87",
+    "filesChecksum": "1b4860e8ee4ea0b1412ead704eac76d59e67d77cddba72eaf5e165a91460668c",
+    "serverUrl": "https://swamp-club.com"
+  }
+}

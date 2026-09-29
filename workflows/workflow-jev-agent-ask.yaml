@@ -1,0 +1,74 @@
+id: 3733fa47-988e-4385-b808-dc4e62f4ae6a
+name: "@mgreten/jev-agent-ask"
+description: Prepare scoped state, ask Jev at the vault-resolving workflow boundary, and return answer-only results.
+tags: {}
+inputs:
+  properties:
+    agentModel:
+      type: string
+      description: Name of the configured @mgreten/jev-agent-tools model instance.
+    jevModel:
+      type: string
+      description: Name of the configured @swamp/typesafe-ai model instance (also set as agentModel's jevModel global argument).
+    mode:
+      type: string
+      enum: [combined, per-file]
+    state:
+      description: Caller-supplied task or other context; use an empty string when only files matter.
+    questions:
+      type: object
+    paths:
+      type: array
+      items: { type: string }
+      default: []
+    globs:
+      type: array
+      items: { type: string }
+      default: []
+  required: [agentModel, jevModel, mode, state, questions]
+jobs:
+  - name: prepare
+    steps:
+      - name: select
+        task:
+          type: model_method
+          modelIdOrName: ${{ inputs.agentModel }}
+          methodName: prepare
+          inputs:
+            mode: ${{ inputs.mode }}
+            state: ${{ inputs.state }}
+            questions: ${{ inputs.questions }}
+            paths: ${{ inputs.paths }}
+            globs: ${{ inputs.globs }}
+  - name: evaluate
+    dependsOn:
+      - job: prepare
+        condition: { type: succeeded }
+    steps:
+      - name: ask-${{ self.request.name }}
+        forEach:
+          item: request
+          in: ${{ data.query('modelName == "' + inputs.agentModel + '" && specName == "prepared" && workflowRunId == "' + run.id + '"')[0].attributes.requests }}
+        concurrency: 1
+        task:
+          type: model_method
+          modelIdOrName: ${{ inputs.jevModel }}
+          methodName: ask
+          inputs:
+            name: ${{ self.request.name }}
+            state: ${{ self.request.state }}
+            questions: ${{ self.request.questions }}
+  - name: collect
+    dependsOn:
+      - job: evaluate
+        condition: { type: succeeded }
+    steps:
+      - name: answers
+        task:
+          type: model_method
+          modelIdOrName: ${{ inputs.agentModel }}
+          methodName: collect
+          inputs:
+            sourceModel: ${{ inputs.agentModel }}
+            preparationName: ${{ data.query('modelName == "' + inputs.agentModel + '" && specName == "prepared" && workflowRunId == "' + run.id + '"')[0].name }}
+version: 1

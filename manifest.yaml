@@ -1,0 +1,16 @@
+manifestVersion: 1
+name: "@mgreten/jev-agent-tools"
+version: "2026.09.29.1"
+description: "Scoped repository file discovery and typed Jev question tools"
+repository: "https://github.com/meagerfindings/swamp-jev-agent-tools"
+paths:
+  base: manifest
+models:
+  - extensions/models/jev_agent_tools.ts
+workflows:
+  - workflows/workflow-jev-agent-ask.yaml
+additionalFiles:
+  - README.md
+  - LICENSE.txt
+dependencies:
+  - "@swamp/typesafe-ai"
