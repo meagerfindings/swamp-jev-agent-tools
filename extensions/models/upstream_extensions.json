@@ -13,5 +13,19 @@
     "checksum": "a41f37b03a0f236182c4333e723248bfb464e65433d3eaa0a75be748d1855f87",
     "filesChecksum": "1b4860e8ee4ea0b1412ead704eac76d59e67d77cddba72eaf5e165a91460668c",
     "serverUrl": "https://swamp-club.com"
+  },
+  "@webframp/typesafe-batch": {
+    "version": "2026.09.26.1",
+    "pulledAt": "2026-09-29T15:54:05.293Z",
+    "files": [
+      ".swamp/bundles/b0ddff90/triage_batch.js",
+      ".swamp/pulled-extensions/@webframp/typesafe-batch/files/LICENSE.md",
+      ".swamp/pulled-extensions/@webframp/typesafe-batch/files/README.md",
+      ".swamp/pulled-extensions/@webframp/typesafe-batch/manifest.yaml",
+      ".swamp/pulled-extensions/@webframp/typesafe-batch/models/triage_batch.ts"
+    ],
+    "checksum": "0bb74135c9fe130efd03f2856b1f4e147505431fc0e4f1ee95b171d08138dd51",
+    "filesChecksum": "2656d513ab1ba2a7424f183365fc74913f5bf710fb21527bd8ce96fdd73c7e4d",
+    "serverUrl": "https://swamp-club.com"
   }
 }
