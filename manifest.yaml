@@ -1,6 +1,7 @@
 manifestVersion: 1
 name: "@mgreten/jev-agent-tools"
-version: "2026.09.29.1"
+version: "2026.10.14.1"
+license: MIT
 description: >-
   Agent-facing, scoped Jev questions over supplied context or repository files.
   Inspired by IndyDevDan's "10 Levels of Jev For Agentic Engineers" cheap-read
